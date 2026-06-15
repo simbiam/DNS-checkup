@@ -188,7 +188,7 @@ def format_summary(results: list[dict]) -> str:
 
 
 # ─────────────────────────────────────────────
-# Entry point
+# Entry point  (refactored for low complexity)
 # ─────────────────────────────────────────────
 
 def parse_args():
@@ -221,6 +221,7 @@ def parse_args():
 
 
 def load_domains_from_file(filepath: str) -> list[str]:
+    """Load and return non-empty, non-comment lines from a domain list file."""
     if not os.path.isfile(filepath):
         print(f"{red('[!]')} File not found: {filepath}")
         sys.exit(1)
@@ -232,57 +233,83 @@ def load_domains_from_file(filepath: str) -> list[str]:
     return domains
 
 
-def main():
-    args = parse_args()
-
+def print_banner(timeout: int) -> None:
+    """Print the startup banner."""
+    # ── NEW helper (extracted from main) ──────────────────────────────────
     banner = f"""
 {cyan(bold('╔══════════════════════════════════════════════════════╗'))}
 {cyan(bold('║      DNS Zone Transfer Vulnerability Scanner         ║'))}
 {cyan(bold('║      AXFR Attack Detection Tool                      ║'))}
 {cyan(bold('╚══════════════════════════════════════════════════════╝'))}
   Started : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-  Timeout : {args.timeout}s per AXFR attempt
+  Timeout : {timeout}s per AXFR attempt
 """
     print(banner)
 
-    # Collect domains
+
+def collect_domains(args) -> list[str]:
+    """Return the list of domains to scan based on CLI arguments."""
+    # ── NEW helper (extracted from main) ──────────────────────────────────
     if args.domain:
-        domains = [args.domain]
-    else:
-        domains = load_domains_from_file(args.file)
-        print(f"  {bold('Domains loaded:')} {len(domains)}")
+        return [args.domain]
+    domains = load_domains_from_file(args.file)
+    print(f"  {bold('Domains loaded:')} {len(domains)}")
+    return domains
 
-    # Scan each domain
-    all_results = []
-    for domain in domains:
-        result = check_domain(domain, timeout=args.timeout)
-        all_results.append(result)
 
-    # Print summary
-    summary = format_summary(all_results)
+def scan_domains(domains: list[str], timeout: int) -> list[dict]:
+    """Run check_domain() over every domain and return all results."""
+    # ── NEW helper (extracted from main) ──────────────────────────────────
+    return [check_domain(domain, timeout=timeout) for domain in domains]
+
+
+def write_report(results: list[dict], summary: str, output_path: str) -> None:
+    """Save scan results and summary to a text file."""
+    # ── NEW helper (extracted from main) ──────────────────────────────────
+    with open(output_path, "w") as fh:
+        fh.write("DNS Zone Transfer Scan Report\n")
+        fh.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        for r in results:
+            _write_domain_block(fh, r)
+        fh.write(summary)
+    print(f"  {green('[+]')} Report saved to: {output_path}")
+
+
+def _write_domain_block(fh, r: dict) -> None:
+    """Write one domain's result block to an open file handle."""
+    # ── NEW helper (extracted from write_report to keep it simple) ────────
+    fh.write(f"Domain     : {r['domain']}\n")
+    fh.write(f"Vulnerable : {'YES' if r['vulnerable'] else 'NO'}\n")
+    fh.write(f"Nameservers: {', '.join(r['nameservers']) or 'N/A'}\n")
+    for d in r["details"]:
+        status = "VULNERABLE" if d["vulnerable"] else "NOT VULNERABLE"
+        fh.write(f"  NS: {d['ns']} -> {status}")
+        if d["error"]:
+            fh.write(f" ({d['error']})")
+        fh.write("\n")
+        if d["records"]:
+            for rec in d["records"]:
+                fh.write(f"    {rec}\n")
+    fh.write("\n" + "-" * 60 + "\n\n")
+
+
+def main() -> None:
+    """
+    Entry point — now intentionally thin.
+    Each logical step lives in its own helper so cognitive complexity stays low.
+    """
+    # ── CHANGED: was one big function (complexity 30), now ≤ 5 ────────────
+    args = parse_args()
+    print_banner(args.timeout)
+
+    domains     = collect_domains(args)
+    all_results = scan_domains(domains, args.timeout)
+    summary     = format_summary(all_results)
+
     print(summary)
 
-    # Optional: save to file
     if args.output:
-        with open(args.output, "w") as fh:
-            fh.write(f"DNS Zone Transfer Scan Report\n")
-            fh.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            for r in all_results:
-                fh.write(f"Domain     : {r['domain']}\n")
-                fh.write(f"Vulnerable : {'YES' if r['vulnerable'] else 'NO'}\n")
-                fh.write(f"Nameservers: {', '.join(r['nameservers']) or 'N/A'}\n")
-                for d in r["details"]:
-                    status = "VULNERABLE" if d["vulnerable"] else "NOT VULNERABLE"
-                    fh.write(f"  NS: {d['ns']} -> {status}")
-                    if d["error"]:
-                        fh.write(f" ({d['error']})")
-                    fh.write("\n")
-                    if d["records"]:
-                        for rec in d["records"]:
-                            fh.write(f"    {rec}\n")
-                fh.write("\n" + "-"*60 + "\n\n")
-            fh.write(summary)
-        print(f"  {green('[+]')} Report saved to: {args.output}")
+        write_report(all_results, summary, args.output)
 
 
 if __name__ == "__main__":
