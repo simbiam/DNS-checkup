@@ -38,6 +38,13 @@ def bold(s):   return f"\033[1m{s}\033[0m"  if USE_COLOR else s
 
 
 # ─────────────────────────────────────────────
+# Status constants  (single source of truth)
+# ─────────────────────────────────────────────
+VULNERABLE     = "VULNERABLE"
+NOT_VULNERABLE = "NOT VULNERABLE"
+
+
+# ─────────────────────────────────────────────
 # Core functions
 # ─────────────────────────────────────────────
 
@@ -144,7 +151,7 @@ def check_domain(domain: str, timeout: int = 10) -> dict:
 
         if success:
             result["vulnerable"] = True
-            print(green("VULNERABLE"))
+            print(green(VULNERABLE))
             print(f"  {green('[+]')} Zone transfer succeeded! "
                   f"{len(records)} record(s) retrieved:")
             for rec in records[:20]:          # Print up to 20 records
@@ -152,10 +159,10 @@ def check_domain(domain: str, timeout: int = 10) -> dict:
             if len(records) > 20:
                 print(f"    … and {len(records) - 20} more record(s).")
         else:
-            print(red("NOT VULNERABLE"))
+            print(red(NOT_VULNERABLE))
             print(f"  {red('[-]')} Transfer denied: {error}")
 
-    verdict = green("⚠  VULNERABLE") if result["vulnerable"] else red("✔  NOT VULNERABLE")
+    verdict = green(f"⚠  {VULNERABLE}") if result["vulnerable"] else red(f"✔  {NOT_VULNERABLE}")
     print(f"\n  {bold('Result:')} {verdict}")
     return result
 
@@ -172,7 +179,7 @@ def format_summary(results: list[dict]) -> str:
     ]
     vuln_count = 0
     for r in results:
-        status = "VULNERABLE" if r["vulnerable"] else "NOT VULNERABLE"
+        status = VULNERABLE if r["vulnerable"] else NOT_VULNERABLE
         lines.append(f"  {r['domain']:<35} {status:<20} {len(r['nameservers'])}")
         if r["vulnerable"]:
             vuln_count += 1
@@ -282,7 +289,7 @@ def _write_domain_block(fh, r: dict) -> None:
     fh.write(f"Vulnerable : {'YES' if r['vulnerable'] else 'NO'}\n")
     fh.write(f"Nameservers: {', '.join(r['nameservers']) or 'N/A'}\n")
     for d in r["details"]:
-        status = "VULNERABLE" if d["vulnerable"] else "NOT VULNERABLE"
+        status = VULNERABLE if d["vulnerable"] else NOT_VULNERABLE
         fh.write(f"  NS: {d['ns']} -> {status}")
         if d["error"]:
             fh.write(f" ({d['error']})")
